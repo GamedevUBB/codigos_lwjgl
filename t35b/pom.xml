@@ -8,13 +8,38 @@
   <name>Archetype - t6</name>
   <url>http://maven.apache.org</url>
 
-  <properties>
-    <lwjgl.version>3.3.6</lwjgl.version>
-    <tinylog.version>2.7.0</tinylog.version>
-    <joml.version>1.10.8</joml.version>
-    <imgui-java.version>1.89.0</imgui-java.version>
-    <native.target>natives-linux</native.target>
-  </properties>
+  <profiles>
+    <profile>
+      <id>perfil-windows</id>
+      <activation>
+        <os>
+          <family>windows</family>
+        </os>
+      </activation>
+      <properties>
+        <lwjgl.version>3.3.6</lwjgl.version>
+        <tinylog.version>2.7.0</tinylog.version>
+        <joml.version>1.10.8</joml.version>
+        <imgui-java.version>1.89.0</imgui-java.version>
+        <native.target>natives-windows</native.target>
+      </properties>
+    </profile>
+    <profile>
+      <id>perfil-linux</id>
+      <activation>
+        <os>
+          <family>linux</family>
+        </os>
+      </activation>
+      <properties>
+        <lwjgl.version>3.3.6</lwjgl.version>
+        <tinylog.version>2.7.0</tinylog.version>
+        <joml.version>1.10.8</joml.version>
+        <imgui-java.version>1.89.0</imgui-java.version>
+        <native.target>natives-linux</native.target>
+      </properties>
+    </profile>
+  </profiles>
 
   <dependencies>
     <dependency>
