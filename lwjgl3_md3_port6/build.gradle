@@ -1,0 +1,26 @@
+plugins {
+    id 'java'
+    id 'application'
+}
+
+repositories { mavenCentral() }
+
+ext.lwjglVersion = '3.3.3'
+ext.lwjglNatives = org.gradle.internal.os.OperatingSystem.current().isWindows() ? 'natives-windows' :
+        org.gradle.internal.os.OperatingSystem.current().isMacOsX() ? 'natives-macos' : 'natives-linux'
+
+application {
+    mainClass = 'ModelosMD3'
+}
+
+dependencies {
+    implementation platform("org.lwjgl:lwjgl-bom:$lwjglVersion")
+    implementation 'org.lwjgl:lwjgl'
+    implementation 'org.lwjgl:lwjgl-glfw'
+    implementation 'org.lwjgl:lwjgl-opengl'
+    implementation 'org.joml:joml:1.10.5'
+
+    runtimeOnly "org.lwjgl:lwjgl::$lwjglNatives"
+    runtimeOnly "org.lwjgl:lwjgl-glfw::$lwjglNatives"
+    runtimeOnly "org.lwjgl:lwjgl-opengl::$lwjglNatives"
+}
