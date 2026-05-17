@@ -13,9 +13,8 @@
     <tinylog.version>2.7.0</tinylog.version>
     <joml.version>1.10.8</joml.version>
     <imgui-java.version>1.89.0</imgui-java.version>
-    <native.target>natives-windows</native.target>
+    <native.target>natives-linux</native.target>
   </properties>
-
 
   <dependencies>
     <dependency>

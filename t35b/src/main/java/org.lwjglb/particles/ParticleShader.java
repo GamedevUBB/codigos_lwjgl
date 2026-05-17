@@ -8,8 +8,8 @@ import org.lwjglb.util.Config;
 
 public class ParticleShader extends ShaderProgram {
 
-	private static final String VERTEX_FILE = new Config().getPath() + "particles\\particleVShader.txt";
-	private static final String FRAGMENT_FILE = new Config().getPath() + "particles\\particleFShader.txt";
+	private static final String VERTEX_FILE = new Config().getPath() + "particles/particleVShader.txt";
+	private static final String FRAGMENT_FILE = new Config().getPath() + "particles/particleFShader.txt";
 
 	private int location_modelViewMatrix;
 	private int location_projectionMatrix;

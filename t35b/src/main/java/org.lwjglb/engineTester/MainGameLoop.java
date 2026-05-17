@@ -67,7 +67,7 @@ public class MainGameLoop {
 
 		//Carga de Texto
 		//--------------------------------------------------------------------------------
-		FontType font = new FontType(loader.loadTexture("candara"), new File(new Config().getPath() + "textures\\candara.fnt"));
+		FontType font = new FontType(loader.loadTexture("candara"), new File(new Config().getPath() + "textures/candara.fnt"));
 		//GUIText text = new GUIText("Este es un texto", 3, font, new Vector2f(0.0f, 0.4f), 1f, true);
 		//text.setColour(1,1,1);
 
@@ -318,7 +318,7 @@ public class MainGameLoop {
 		//Modelo MD3
 		MD3Model lara;
 		lara = new MD3Model();
-		lara.loadModel(new Config().getPath() + "md3\\lara", "lara");
+		lara.loadModel(new Config().getPath() + "md3/lara", "lara");
 		lara.setTorsoAnimation("TORSO_STAND2");
 		lara.setLegsAnimation("LEGS_IDLE");
 		float rotaModel = 0f;

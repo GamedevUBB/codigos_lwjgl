@@ -8,8 +8,8 @@ import org.lwjglb.util.Config;
 
 public class FontShader extends ShaderProgram {
 
-	private static final String VERTEX_FILE = new Config().getPath() + "fontRendering\\fontVertex.txt";
-	private static final String FRAGMENT_FILE = new Config().getPath() + "fontRendering\\fontFragment.txt";
+	private static final String VERTEX_FILE = new Config().getPath() + "fontRendering/fontVertex.txt";
+	private static final String FRAGMENT_FILE = new Config().getPath() + "fontRendering/fontFragment.txt";
 	
 	private int location_colour;
 	private int location_translation;

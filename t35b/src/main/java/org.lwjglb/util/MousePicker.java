@@ -69,7 +69,13 @@ public class MousePicker {
     }
 
     private Vector4f toEyeCoords(Vector4f clipCoords) {
-        Matrix4f invertedProjection = projectionMatrix.invert();
+        Matrix4f localProjMatrix = new Matrix4f(); // Matriz temporal
+
+        // Deep-copy de la matriz de proyección
+        localProjMatrix.set(projectionMatrix);
+
+        // Resto de la función original
+        Matrix4f invertedProjection = localProjMatrix.invert();
         Vector4f eyeCoords = invertedProjection.transform(clipCoords);
         return new Vector4f(eyeCoords.x, eyeCoords.y, -1f, 0f);
     }

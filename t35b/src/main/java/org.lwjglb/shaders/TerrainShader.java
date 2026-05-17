@@ -11,8 +11,8 @@ import org.lwjglb.util.Maths;
 
 public class TerrainShader extends ShaderProgram {
 
-    private static final String VERTEX_FILE = new Config().getPath() + "shaders\\terrainVertexShader.txt";
-    private static final String FRAGMENT_FILE = new Config().getPath() + "shaders\\terrainFragmentShader.txt";
+    private static final String VERTEX_FILE = new Config().getPath() + "shaders/terrainVertexShader.txt";
+    private static final String FRAGMENT_FILE = new Config().getPath() + "shaders/terrainFragmentShader.txt";
 
     private static final int MAX_LIGHTS = 4;
 
