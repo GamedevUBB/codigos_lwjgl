@@ -369,7 +369,6 @@ public class MainGameLoop {
 
 			//masterRenderer.processEntity(player);
 
-
 			GL11.glEnable(GL30.GL_CLIP_DISTANCE0);
 
 			//render reflection teture
@@ -385,13 +384,6 @@ public class MainGameLoop {
 			//render reflection texture
 			fbos.bindRefractionFrameBuffer();
 			masterRenderer.renderScene(entities, normalMapEntities, terrains, lights, camera, new Vector4f(0, -1, 0, water.getHeight()));
-
-			//render to screen
-			GL11.glDisable(GL30.GL_CLIP_DISTANCE0);
-			fbos.unbindCurrentFrameBuffer();
-			masterRenderer.renderScene(entities, normalMapEntities, terrains, lights, camera, new Vector4f(0, -1, 0, 100000));
-
-
 
 			//renderer.processTerrain(terrain);
 			//renderer.processTerrain(terrain2);
@@ -453,6 +445,21 @@ public class MainGameLoop {
 			GL11.glFrontFace(GL11.GL_CCW); //
 			//GL11.glDisable(GL11.GL_POLYGON_OFFSET_FILL);
 
+			//render to screen
+			GL11.glDisable(GL30.GL_CLIP_DISTANCE0);
+			fbos.unbindCurrentFrameBuffer();
+			masterRenderer.renderScene(entities, normalMapEntities, terrains, lights, camera, new Vector4f(0, -1, 0, 100000));
+
+			GL11.glFrontFace(GL11.GL_CW); // ← MD3 usa clockwise
+
+			shader.start();
+			shader.loadProjectionMatrix(masterRenderer.getProjectionMatrix());
+			//shader.loadModelMatrix(modelMatrix);
+			shader.loadViewMatrix(Maths.createViewMatrix(camera));
+			lara.draw(modelMatrix, shader);
+			shader.stop();
+
+			GL11.glFrontFace(GL11.GL_CCW); //
 
 			//---------
 			waterRenderer.render(waters, camera, light);
