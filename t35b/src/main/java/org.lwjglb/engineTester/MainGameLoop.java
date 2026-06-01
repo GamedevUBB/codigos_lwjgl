@@ -56,6 +56,19 @@ public class MainGameLoop {
 
 	private static SimpleShader shader;
 
+	static void drawLara(SimpleShader shader, MD3Model lara, MasterRenderer masterRenderer, Camera camera, Matrix4f modelMatrix) {
+		GL11.glFrontFace(GL11.GL_CW); // ← MD3 usa clockwise
+
+		shader.start();
+		shader.loadProjectionMatrix(masterRenderer.getProjectionMatrix());
+		//shader.loadModelMatrix(modelMatrix);
+		shader.loadViewMatrix(Maths.createViewMatrix(camera));
+		lara.draw(modelMatrix, shader);
+		shader.stop();
+
+		GL11.glFrontFace(GL11.GL_CCW); //
+	}
+
 	/**
 	 * Creates a display and then continuously updates the display until the user tries to close it. 
 	 * @param args
@@ -401,22 +414,6 @@ public class MainGameLoop {
 				lara.setLegsAnimation("LEGS_IDLE");
 			}
 
-// Evita transparencia accidental
-			GL11.glDisable(GL11.GL_BLEND);
-			GL11.glDisable(GL30.GL_CLIP_DISTANCE0);
-
-			// ✅ CORRECTO para MD3 de Quake 3
-			GL11.glEnable(GL11.GL_CULL_FACE);
-			GL11.glCullFace(GL11.GL_BACK);
-			GL11.glFrontFace(GL11.GL_CW); // ← MD3 usa clockwise
-
-			// Para modelos sólidos
-			GL11.glEnable(GL11.GL_DEPTH_TEST);
-			GL11.glDepthFunc(GL11.GL_LESS);
-			GL11.glDepthMask(true);
-
-			//rotaModel += 1.5f;
-
 			Matrix4f modelMatrix = new Matrix4f()
 					.translate(
 							player.getPosition().x,
@@ -435,14 +432,8 @@ public class MainGameLoop {
 			//GL11.glEnable(GL11.GL_POLYGON_OFFSET_FILL);
 			//GL11.glPolygonOffset(1.0f, 1.0f);
 
-			shader.start();
-			shader.loadProjectionMatrix(masterRenderer.getProjectionMatrix());
-			//shader.loadModelMatrix(modelMatrix);
-			shader.loadViewMatrix(Maths.createViewMatrix(camera));
-			lara.draw(modelMatrix, shader);
-			shader.stop();
+			drawLara(shader, lara, masterRenderer, camera, modelMatrix);
 
-			GL11.glFrontFace(GL11.GL_CCW); //
 			//GL11.glDisable(GL11.GL_POLYGON_OFFSET_FILL);
 
 			//render to screen
@@ -450,16 +441,7 @@ public class MainGameLoop {
 			fbos.unbindCurrentFrameBuffer();
 			masterRenderer.renderScene(entities, normalMapEntities, terrains, lights, camera, new Vector4f(0, -1, 0, 100000));
 
-			GL11.glFrontFace(GL11.GL_CW); // ← MD3 usa clockwise
-
-			shader.start();
-			shader.loadProjectionMatrix(masterRenderer.getProjectionMatrix());
-			//shader.loadModelMatrix(modelMatrix);
-			shader.loadViewMatrix(Maths.createViewMatrix(camera));
-			lara.draw(modelMatrix, shader);
-			shader.stop();
-
-			GL11.glFrontFace(GL11.GL_CCW); //
+			drawLara(shader, lara, masterRenderer, camera, modelMatrix);
 
 			//---------
 			waterRenderer.render(waters, camera, light);
