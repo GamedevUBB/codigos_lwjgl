@@ -36,3 +36,6 @@ build/
 
 ### Mac OS ###
 .DS_Store
+
+## Esto es para evitar commitear los JARs al repo
+out/*
