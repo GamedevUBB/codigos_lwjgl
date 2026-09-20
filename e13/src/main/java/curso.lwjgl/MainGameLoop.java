@@ -406,8 +406,8 @@ public class MainGameLoop {
         private final Node rootNode;
         private final List<Animation> animations;
         private final String[] animationNames;
-        private final org.joml.Vector3f centerOffset;
-        private final float recommendedScale;
+        private org.joml.Vector3f centerOffset;
+        private float recommendedScale;
         private final List<BoneInfo> boneInfos;
         private final Map<String, Integer> boneIndexByName;
         private final Matrix4f[] finalBoneMatrices;
@@ -419,8 +419,6 @@ public class MainGameLoop {
                          Map<Integer, Texture> texturesByMaterial,
                          Node rootNode,
                          List<Animation> animations,
-                         org.joml.Vector3f centerOffset,
-                         float recommendedScale,
                          List<BoneInfo> boneInfos,
                          Map<String, Integer> boneIndexByName) {
             this.meshes = meshes;
@@ -428,14 +426,134 @@ public class MainGameLoop {
             this.rootNode = rootNode;
             this.animations = animations;
             this.animationNames = buildAnimationNames(animations);
-            this.centerOffset = centerOffset;
-            this.recommendedScale = recommendedScale;
             this.boneInfos = boneInfos;
             this.boneIndexByName = boneIndexByName;
             this.finalBoneMatrices = new Matrix4f[MAX_BONES];
 
             for (int i = 0; i < MAX_BONES; i++) {
                 finalBoneMatrices[i] = new Matrix4f().identity();
+            }
+
+            computeFraming();
+        }
+
+        /*
+         * Calcula el encuadre (escala y desplazamiento) del modelo.
+         *
+         * Se mide con EXACTAMENTE la misma matemática que se usa al dibujar: las mallas con
+         * huesos pasan por el skinning en la CPU (pose de reposo) y las mallas sin huesos usan
+         * la transformación global de su nodo. Así el tamaño medido coincide siempre con el
+         * tamaño dibujado, sin importar cómo vengan escaladas la jerarquía o las matrices
+         * de enlace (inverse bind matrices) del GLB.
+         */
+        private void computeFraming() {
+            Bounds bounds = calculatePoseBounds(null, 0.0);
+
+            if (!bounds.isValid()) {
+                centerOffset = new org.joml.Vector3f(0.0f, 0.0f, 0.0f);
+                recommendedScale = 1.0f;
+                return;
+            }
+
+            float centerX = (bounds.minX + bounds.maxX) * 0.5f;
+            float centerY = (bounds.minY + bounds.maxY) * 0.5f;
+            float centerZ = (bounds.minZ + bounds.maxZ) * 0.5f;
+
+            float sizeX = bounds.maxX - bounds.minX;
+            float sizeY = bounds.maxY - bounds.minY;
+            float sizeZ = bounds.maxZ - bounds.minZ;
+            float maxSize = Math.max(sizeX, Math.max(sizeY, sizeZ));
+
+            /*
+             * Aumenta el tamaño visual del modelo sin modificar la cámara
+             * ni la proyección: el lado más grande del modelo mide 4.6 unidades.
+             */
+            recommendedScale = maxSize > 0.0f ? 4.6f / maxSize : 1.0f;
+
+            /*
+             * La cámara original mira al punto y=1.0.
+             * Para que el espectador vea el modelo justo frente a él,
+             * se desplaza el centro visual del modelo a ese mismo punto.
+             */
+            float cameraTargetY = 1.0f;
+            centerOffset = new org.joml.Vector3f(
+                    -centerX,
+                    (cameraTargetY / recommendedScale) - centerY,
+                    -centerZ
+            );
+
+            // Diagnóstico: permite comparar el tamaño en reposo con el de cada animación.
+            System.out.printf("Encuadre (pose de reposo): tamaño = %.3f x %.3f x %.3f, escala = %.4f%n",
+                    sizeX, sizeY, sizeZ, recommendedScale);
+
+            for (int i = 0; i < animations.size(); i++) {
+                Bounds animBounds = calculatePoseBounds(animations.get(i), 0.0);
+                if (animBounds.isValid()) {
+                    float animMax = Math.max(animBounds.maxX - animBounds.minX,
+                            Math.max(animBounds.maxY - animBounds.minY, animBounds.maxZ - animBounds.minZ));
+                    System.out.printf("  Animación \"%s\" en t=0: tamaño máximo = %.3f (reposo: %.3f)%n",
+                            animationNames[i], animMax, maxSize);
+                }
+            }
+        }
+
+        private Bounds calculatePoseBounds(Animation animation, double ticks) {
+            for (int i = 0; i < MAX_BONES; i++) {
+                finalBoneMatrices[i].identity();
+            }
+
+            calculateBoneTransforms(rootNode, new Matrix4f().identity(), animation, ticks);
+
+            Bounds bounds = new Bounds();
+            accumulatePoseBounds(rootNode, new Matrix4f().identity(), animation, ticks, bounds);
+            return bounds;
+        }
+
+        private void accumulatePoseBounds(Node node, Matrix4f parentTransform,
+                                          Animation animation, double ticks, Bounds bounds) {
+            Matrix4f globalTransform = new Matrix4f(parentTransform)
+                    .mul(getAnimatedLocalTransform(node, animation, ticks));
+
+            for (Integer meshIndex : node.meshIndices) {
+                if (meshIndex < 0 || meshIndex >= meshes.size()) continue;
+
+                GlbMesh mesh = meshes.get(meshIndex);
+                float[] data = mesh.vertexData;
+
+                for (int v = 0; v < mesh.vertexCount; v++) {
+                    int o = v * GlbMesh.FLOATS_PER_VERTEX;
+                    Vector3f p = new Vector3f(data[o], data[o + 1], data[o + 2]);
+
+                    if (mesh.hasBones) {
+                        // Igual que el vertex shader: mezcla de matrices de hueso ponderada.
+                        float weightSum = data[o + 12] + data[o + 13] + data[o + 14] + data[o + 15];
+
+                        if (weightSum > 0.0f) {
+                            Vector3f skinned = new Vector3f();
+                            Vector3f transformed = new Vector3f();
+
+                            for (int k = 0; k < 4; k++) {
+                                float weight = data[o + 12 + k];
+                                if (weight <= 0.0f) continue;
+
+                                int boneId = (int) (data[o + 8 + k] + 0.5f);
+                                finalBoneMatrices[boneId].transformPosition(p, transformed);
+                                skinned.fma(weight, transformed);
+                            }
+
+                            p = skinned;
+                        }
+                        // Con huesos NO se aplica la transformación del nodo (ver renderNode).
+                    } else {
+                        globalTransform.transformPosition(p);
+                    }
+
+                    bounds.add(p.x, p.y, p.z);
+                }
+            }
+
+            for (Node child : node.children) {
+                accumulatePoseBounds(child, globalTransform, animation, ticks, bounds);
             }
         }
 
@@ -458,13 +576,6 @@ public class MainGameLoop {
             Map<Integer, Texture> materialTextures = new HashMap<>();
             List<BoneInfo> boneInfos = new ArrayList<>();
             Map<String, Integer> boneIndexByName = new HashMap<>();
-
-            float minX = Float.POSITIVE_INFINITY;
-            float minY = Float.POSITIVE_INFINITY;
-            float minZ = Float.POSITIVE_INFINITY;
-            float maxX = Float.NEGATIVE_INFINITY;
-            float maxY = Float.NEGATIVE_INFINITY;
-            float maxZ = Float.NEGATIVE_INFINITY;
 
             try {
                 materialTextures.putAll(loadMaterialTextures(scene, file));
@@ -506,13 +617,6 @@ public class MainGameLoop {
                             float x = position.x();
                             float y = position.y();
                             float z = position.z();
-
-                            minX = Math.min(minX, x);
-                            minY = Math.min(minY, y);
-                            minZ = Math.min(minZ, z);
-                            maxX = Math.max(maxX, x);
-                            maxY = Math.max(maxY, y);
-                            maxZ = Math.max(maxZ, z);
 
                             vertexData.add(x);
                             vertexData.add(y);
@@ -557,60 +661,11 @@ public class MainGameLoop {
                     loadedMeshes.add(new GlbMesh(data, aiMesh.mMaterialIndex(), color, aiMesh.mNumBones() > 0));
                 }
 
-                /*
-                 * Encuadre corregido:
-                 * El cálculo anterior usaba solo las coordenadas locales de cada malla.
-                 * En modelos GLB animados, las mallas suelen estar bajo nodos con
-                 * transformaciones propias. Si esas transformaciones no se consideran,
-                 * el centro calculado puede quedar lejos del origen y el modelo no aparece
-                 * frente a la cámara.
-                 *
-                 * Aquí se calcula el bounding box en espacio de escena, aplicando la
-                 * jerarquía de nodos original de Assimp a las mallas sin huesos. Las mallas
-                 * con huesos se miden en su pose de reposo sin la transformación de su nodo
-                 * (igual que en render()), para que el tamaño calculado coincida con el
-                 * tamaño dibujado. No se modifica la proyección ni la cámara.
-                 */
-                Bounds sceneBounds = calculateSceneBounds(scene, scene.mRootNode());
-
-                if (!sceneBounds.isValid()) {
-                    sceneBounds.add(minX, minY, minZ);
-                    sceneBounds.add(maxX, maxY, maxZ);
-                }
-
-                float centerX = (sceneBounds.minX + sceneBounds.maxX) * 0.5f;
-                float centerY = (sceneBounds.minY + sceneBounds.maxY) * 0.5f;
-                float centerZ = (sceneBounds.minZ + sceneBounds.maxZ) * 0.5f;
-
-                float sizeX = sceneBounds.maxX - sceneBounds.minX;
-                float sizeY = sceneBounds.maxY - sceneBounds.minY;
-                float sizeZ = sceneBounds.maxZ - sceneBounds.minZ;
-                float maxSize = Math.max(sizeX, Math.max(sizeY, sizeZ));
-
-                /*
-                 * Aumenta el tamaño visual del modelo sin modificar la cámara
-                 * ni la proyección. Antes se usaba 2.5f / maxSize;
-                 * ahora se usa 4.6f / maxSize para que el personaje se vea
-                 * más grande y cercano frente al espectador.
-                 */
-                float scale = maxSize > 0.0f ? 4.6f / maxSize : 1.0f;
-
-                /*
-                 * La cámara original mira al punto y=1.0.
-                 * Para que el espectador vea el modelo justo frente a él,
-                 * se desplaza el centro visual del modelo a ese mismo punto.
-                 */
-                float cameraTargetY = 1.0f;
-                org.joml.Vector3f offset = new org.joml.Vector3f(
-                        -centerX,
-                        (cameraTargetY / scale) - centerY,
-                        -centerZ
-                );
-
                 Node root = loadNode(scene.mRootNode());
                 List<Animation> loadedAnimations = loadAnimations(scene);
 
-                return new GlbModel(loadedMeshes, materialTextures, root, loadedAnimations, offset, scale,
+                // El encuadre (escala y centrado) lo calcula el propio GlbModel en su constructor.
+                return new GlbModel(loadedMeshes, materialTextures, root, loadedAnimations,
                         boneInfos, boneIndexByName);
             } finally {
                 aiReleaseImport(scene);
@@ -819,53 +874,6 @@ public class MainGameLoop {
             return defaultColor;
         }
 
-
-        private static Bounds calculateSceneBounds(AIScene scene, AINode rootNode) {
-            Bounds bounds = new Bounds();
-            calculateSceneBoundsRecursive(scene, rootNode, new Matrix4f().identity(), bounds);
-            return bounds;
-        }
-
-        private static void calculateSceneBoundsRecursive(AIScene scene,
-                                                          AINode aiNode,
-                                                          Matrix4f parentTransform,
-                                                          Bounds bounds) {
-            Matrix4f localTransform = toMatrix(aiNode.mTransformation());
-            Matrix4f globalTransform = new Matrix4f(parentTransform).mul(localTransform);
-
-            IntBuffer meshIndices = aiNode.mMeshes();
-            PointerBuffer sceneMeshes = scene.mMeshes();
-
-            if (meshIndices != null && sceneMeshes != null) {
-                for (int i = 0; i < aiNode.mNumMeshes(); i++) {
-                    int meshIndex = meshIndices.get(i);
-                    if (meshIndex < 0 || meshIndex >= scene.mNumMeshes()) continue;
-
-                    AIMesh mesh = AIMesh.create(sceneMeshes.get(meshIndex));
-                    AIVector3D.Buffer vertices = mesh.mVertices();
-
-                    // Con huesos: en pose de reposo el vértice ya está en espacio de escena,
-                    // y en render() se ignora la transformación del nodo. Se mide igual aquí.
-                    boolean skinned = mesh.mNumBones() > 0;
-
-                    for (int v = 0; v < mesh.mNumVertices(); v++) {
-                        AIVector3D vertex = vertices.get(v);
-                        Vector3f p = new Vector3f(vertex.x(), vertex.y(), vertex.z());
-                        if (!skinned) {
-                            globalTransform.transformPosition(p);
-                        }
-                        bounds.add(p.x, p.y, p.z);
-                    }
-                }
-            }
-
-            PointerBuffer children = aiNode.mChildren();
-            if (children != null) {
-                for (int i = 0; i < aiNode.mNumChildren(); i++) {
-                    calculateSceneBoundsRecursive(scene, AINode.create(children.get(i)), globalTransform, bounds);
-                }
-            }
-        }
 
         private static class Bounds {
             private float minX = Float.POSITIVE_INFINITY;
@@ -1088,8 +1096,10 @@ public class MainGameLoop {
         private final int materialIndex;
         private final float[] color;
         private final boolean hasBones;
+        private final float[] vertexData; // copia en CPU, usada para medir el modelo
 
         public GlbMesh(float[] vertexData, int materialIndex, float[] color, boolean hasBones) {
+            this.vertexData = vertexData;
             this.vertexCount = vertexData.length / FLOATS_PER_VERTEX;
             this.materialIndex = materialIndex;
             this.color = color;
