@@ -410,7 +410,6 @@ public class MainGameLoop {
         private final float recommendedScale;
         private final List<BoneInfo> boneInfos;
         private final Map<String, Integer> boneIndexByName;
-        private final Matrix4f globalInverseTransform;
         private final Matrix4f[] finalBoneMatrices;
 
         private volatile int activeAnimationIndex = 0;
@@ -423,8 +422,7 @@ public class MainGameLoop {
                          org.joml.Vector3f centerOffset,
                          float recommendedScale,
                          List<BoneInfo> boneInfos,
-                         Map<String, Integer> boneIndexByName,
-                         Matrix4f globalInverseTransform) {
+                         Map<String, Integer> boneIndexByName) {
             this.meshes = meshes;
             this.texturesByMaterial = texturesByMaterial;
             this.rootNode = rootNode;
@@ -434,7 +432,6 @@ public class MainGameLoop {
             this.recommendedScale = recommendedScale;
             this.boneInfos = boneInfos;
             this.boneIndexByName = boneIndexByName;
-            this.globalInverseTransform = globalInverseTransform;
             this.finalBoneMatrices = new Matrix4f[MAX_BONES];
 
             for (int i = 0; i < MAX_BONES; i++) {
@@ -569,8 +566,10 @@ public class MainGameLoop {
                  * frente a la cámara.
                  *
                  * Aquí se calcula el bounding box en espacio de escena, aplicando la
-                 * jerarquía de nodos original de Assimp. No se modifica la proyección ni
-                 * la configuración de cámara solicitada.
+                 * jerarquía de nodos original de Assimp a las mallas sin huesos. Las mallas
+                 * con huesos se miden en su pose de reposo sin la transformación de su nodo
+                 * (igual que en render()), para que el tamaño calculado coincida con el
+                 * tamaño dibujado. No se modifica la proyección ni la cámara.
                  */
                 Bounds sceneBounds = calculateSceneBounds(scene, scene.mRootNode());
 
@@ -610,10 +609,9 @@ public class MainGameLoop {
 
                 Node root = loadNode(scene.mRootNode());
                 List<Animation> loadedAnimations = loadAnimations(scene);
-                Matrix4f globalInverse = new Matrix4f(toMatrix(scene.mRootNode().mTransformation())).invert();
 
                 return new GlbModel(loadedMeshes, materialTextures, root, loadedAnimations, offset, scale,
-                        boneInfos, boneIndexByName, globalInverse);
+                        boneInfos, boneIndexByName);
             } finally {
                 aiReleaseImport(scene);
             }
@@ -846,10 +844,16 @@ public class MainGameLoop {
                     AIMesh mesh = AIMesh.create(sceneMeshes.get(meshIndex));
                     AIVector3D.Buffer vertices = mesh.mVertices();
 
+                    // Con huesos: en pose de reposo el vértice ya está en espacio de escena,
+                    // y en render() se ignora la transformación del nodo. Se mide igual aquí.
+                    boolean skinned = mesh.mNumBones() > 0;
+
                     for (int v = 0; v < mesh.mNumVertices(); v++) {
                         AIVector3D vertex = vertices.get(v);
                         Vector3f p = new Vector3f(vertex.x(), vertex.y(), vertex.z());
-                        globalTransform.transformPosition(p);
+                        if (!skinned) {
+                            globalTransform.transformPosition(p);
+                        }
                         bounds.add(p.x, p.y, p.z);
                     }
                 }
@@ -941,7 +945,7 @@ public class MainGameLoop {
                 enviarBoneMatrix(i, finalBoneMatrices[i]);
             }
 
-            renderNode(rootNode, new Matrix4f(rootModelMatrix), vp, activeAnimation, ticks);
+            renderNode(rootNode, new Matrix4f(rootModelMatrix), rootModelMatrix, vp, activeAnimation, ticks);
         }
 
         private void calculateBoneTransforms(Node node, Matrix4f parentTransform, Animation animation, double ticks) {
@@ -951,8 +955,14 @@ public class MainGameLoop {
             Integer boneIndex = boneIndexByName.get(node.name);
             if (boneIndex != null && boneIndex >= 0 && boneIndex < MAX_BONES) {
                 BoneInfo boneInfo = boneInfos.get(boneIndex);
-                finalBoneMatrices[boneIndex] = new Matrix4f(globalInverseTransform)
-                        .mul(globalTransform)
+                /*
+                 * En glTF, la posición final de un vértice con skinning es:
+                 *     jointGlobal * inverseBindMatrix * vértice
+                 * Assimp entrega la inverseBindMatrix en mOffsetMatrix.
+                 * No se debe multiplicar por la inversa del nodo raíz: esa fórmula viene de
+                 * FBX/Collada y rompe la escala cuando la jerarquía del GLB tiene escalas.
+                 */
+                finalBoneMatrices[boneIndex] = new Matrix4f(globalTransform)
                         .mul(boneInfo.offsetMatrix);
             }
 
@@ -961,7 +971,8 @@ public class MainGameLoop {
             }
         }
 
-        private void renderNode(Node node, Matrix4f parentTransform, Matrix4f vp, Animation animation, double ticks) {
+        private void renderNode(Node node, Matrix4f parentTransform, Matrix4f rootModelMatrix,
+                                Matrix4f vp, Animation animation, double ticks) {
             Matrix4f localTransform = getAnimatedLocalTransform(node, animation, ticks);
             Matrix4f globalTransform = new Matrix4f(parentTransform).mul(localTransform);
 
@@ -971,17 +982,26 @@ public class MainGameLoop {
                 GlbMesh mesh = meshes.get(meshIndex);
                 Texture texture = texturesByMaterial.get(mesh.materialIndex);
 
-                Matrix4f mvp = new Matrix4f(vp).mul(globalTransform);
+                /*
+                 * Malla con huesos: el vértice ya sale del shader en espacio de escena
+                 * (jointGlobal * inverseBindMatrix), por lo que la transformación del nodo
+                 * que contiene la malla debe IGNORARSE (así lo define glTF). Si se aplicara,
+                 * las escalas/rotaciones de la jerarquía se contarían dos veces.
+                 * Malla sin huesos: sí usa la transformación global de su nodo.
+                 */
+                Matrix4f meshTransform = mesh.hasBones ? rootModelMatrix : globalTransform;
+
+                Matrix4f mvp = new Matrix4f(vp).mul(meshTransform);
 
                 enviarMVP(mvp);
-                enviarModelo(globalTransform);
+                enviarModelo(meshTransform);
                 glUniform1i(locationHasBones, mesh.hasBones ? 1 : 0);
 
                 mesh.render(locationColor, locationUseTexture, texture);
             }
 
             for (Node child : node.children) {
-                renderNode(child, globalTransform, vp, animation, ticks);
+                renderNode(child, globalTransform, rootModelMatrix, vp, animation, ticks);
             }
         }
 
