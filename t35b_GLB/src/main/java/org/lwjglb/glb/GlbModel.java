@@ -35,6 +35,8 @@ import static org.lwjglb.shaders.ShaderProgram.matrixBuffer;
      ******************************************************************************************/
 public class GlbModel {
     // Variables auxiliares
+    public int shaderProgram;
+
     private static final int MAX_BONES = 100;
     private static int[] locationBones;
     private static int locationMVPMatrix;
@@ -42,6 +44,8 @@ public class GlbModel {
     private static int locationUseTexture;
     private static int locationHasBones;
     private static int locationModelMatrix;
+    public int locationTextureSampler;
+    public int locationLightDirection;
 
     // Métodos auxiliares
     private static void enviarBoneMatrix(int index, Matrix4f matrix) {
@@ -1100,5 +1104,118 @@ public class GlbModel {
         }
 
         return names;
+    }
+
+    public void crearShader() {
+        String vertexShaderSource =
+                "#version 150 core\n" +
+                        "const int MAX_BONES = " + MAX_BONES + ";\n" +
+                        "in vec3 position;\n" +
+                        "in vec3 normal;\n" +
+                        "in vec2 texCoord;\n" +
+                        "in vec4 boneIds;\n" +
+                        "in vec4 weights;\n" +
+                        "\n" +
+                        "uniform mat4 uMVP;\n" +
+                        "uniform mat4 uModel;\n" +
+                        "uniform mat4 uBones[MAX_BONES];\n" +
+                        "uniform bool uHasBones;\n" +
+                        "\n" +
+                        "out vec3 passNormal;\n" +
+                        "out vec2 passTexCoord;\n" +
+                        "\n" +
+                        "void main() {\n" +
+                        "    vec4 localPosition = vec4(position, 1.0);\n" +
+                        "    vec3 localNormal = normal;\n" +
+                        "\n" +
+                        "    if (uHasBones && (weights.x + weights.y + weights.z + weights.w) > 0.0) {\n" +
+                        "        int b0 = int(boneIds.x + 0.5);\n" +
+                        "        int b1 = int(boneIds.y + 0.5);\n" +
+                        "        int b2 = int(boneIds.z + 0.5);\n" +
+                        "        int b3 = int(boneIds.w + 0.5);\n" +
+                        "        mat4 skin = mat4(0.0);\n" +
+                        "        skin += uBones[b0] * weights.x;\n" +
+                        "        skin += uBones[b1] * weights.y;\n" +
+                        "        skin += uBones[b2] * weights.z;\n" +
+                        "        skin += uBones[b3] * weights.w;\n" +
+                        "        localPosition = skin * localPosition;\n" +
+                        "        localNormal = mat3(skin) * normal;\n" +
+                        "    }\n" +
+                        "\n" +
+                        "    gl_Position = uMVP * localPosition;\n" +
+                        "    passNormal = mat3(transpose(inverse(uModel))) * localNormal;\n" +
+                        "    passTexCoord = texCoord;\n" +
+                        "}\n";
+
+        String fragmentShaderSource =
+                "#version 150 core\n" +
+                        "in vec3 passNormal;\n" +
+                        "in vec2 passTexCoord;\n" +
+                        "\n" +
+                        "uniform vec3 uColor;\n" +
+                        "uniform bool uUseTexture;\n" +
+                        "uniform sampler2D uTexture;\n" +
+                        "uniform vec3 uLightDirection;\n" +
+                        "\n" +
+                        "out vec4 out_Color;\n" +
+                        "\n" +
+                        "void main() {\n" +
+                        "    vec4 base = uUseTexture ? texture(uTexture, passTexCoord) : vec4(uColor, 1.0);\n" +
+                        "    if (base.a < 0.1) discard;\n" +
+                        "    vec3 n = normalize(passNormal);\n" +
+                        "    vec3 l = normalize(-uLightDirection);\n" +
+                        "    float diffuse = max(dot(n, l), 0.0);\n" +
+                        "    float ambient = 0.38;\n" +
+                        "    vec3 finalColor = base.rgb * (ambient + diffuse * 0.62);\n" +
+                        "    out_Color = vec4(finalColor, base.a);\n" +
+                        "}\n";
+
+        int vertexShader = compileShader(vertexShaderSource, GL_VERTEX_SHADER);
+        int fragmentShader = compileShader(fragmentShaderSource, GL_FRAGMENT_SHADER);
+
+        shaderProgram = glCreateProgram();
+
+        glAttachShader(shaderProgram, vertexShader);
+        glAttachShader(shaderProgram, fragmentShader);
+
+        glBindAttribLocation(shaderProgram, 0, "position");
+        glBindAttribLocation(shaderProgram, 1, "normal");
+        glBindAttribLocation(shaderProgram, 2, "texCoord");
+        glBindAttribLocation(shaderProgram, 3, "boneIds");
+        glBindAttribLocation(shaderProgram, 4, "weights");
+
+        glLinkProgram(shaderProgram);
+
+        if (glGetProgrami(shaderProgram, GL_LINK_STATUS) == GL_FALSE) {
+            throw new RuntimeException("Error enlazando shader:\n" + glGetProgramInfoLog(shaderProgram));
+        }
+
+        locationMVPMatrix = glGetUniformLocation(shaderProgram, "uMVP");
+        locationModelMatrix = glGetUniformLocation(shaderProgram, "uModel");
+        locationColor = glGetUniformLocation(shaderProgram, "uColor");
+        locationUseTexture = glGetUniformLocation(shaderProgram, "uUseTexture");
+        locationTextureSampler = glGetUniformLocation(shaderProgram, "uTexture");
+        locationLightDirection = glGetUniformLocation(shaderProgram, "uLightDirection");
+        locationHasBones = glGetUniformLocation(shaderProgram, "uHasBones");
+
+        locationBones = new int[MAX_BONES];
+        for (int i = 0; i < MAX_BONES; i++) {
+            locationBones[i] = glGetUniformLocation(shaderProgram, "uBones[" + i + "]");
+        }
+
+        glDeleteShader(vertexShader);
+        glDeleteShader(fragmentShader);
+    }
+
+    public static int compileShader(String source, int type) {
+        int shaderID = glCreateShader(type);
+        glShaderSource(shaderID, source);
+        glCompileShader(shaderID);
+
+        if (glGetShaderi(shaderID, GL_COMPILE_STATUS) == GL_FALSE) {
+            throw new RuntimeException("Error compilando shader:\n" + glGetShaderInfoLog(shaderID));
+        }
+
+        return shaderID;
     }
 }

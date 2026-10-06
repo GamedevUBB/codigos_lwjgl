@@ -15,6 +15,7 @@ import org.lwjglb.entities.Player;
 import org.lwjglb.fontMeshCreator.FontType;
 import org.lwjglb.fontMeshCreator.GUIText;
 import org.lwjglb.fontRendering.TextMaster;
+import org.lwjglb.glb.GlbModel;
 import org.lwjglb.guis.GuiRenderer;
 import org.lwjglb.guis.GuiTexture;
 import org.lwjglb.md3.MD3Model;
@@ -40,11 +41,14 @@ import org.lwjglb.water.WaterShader;
 import org.lwjglb.water.WaterTile;
 
 import java.io.File;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
 import java.util.Vector;
 import org.lwjglb.util.Config;
+
+import org.lwjgl.opengl.GL20;
 
 /**
  * This class contains the main method and is used to test the engine.
@@ -53,8 +57,9 @@ import org.lwjglb.util.Config;
  *
  */
 public class MainGameLoop {
-
+	private static float modelAngle = 0.0f;
 	private static SimpleShader shader;
+	private static final String GLB_MODEL_PATH = "src/main/resources/models/17_deadpool_mua.glb";
 
 	static void drawLara(SimpleShader shader, MD3Model lara, MasterRenderer masterRenderer, Camera camera, Matrix4f modelMatrix) {
 		GL11.glFrontFace(GL11.GL_CW); // ← MD3 usa clockwise
@@ -337,6 +342,17 @@ public class MainGameLoop {
 		float rotaModel = 0f;
 		shader = new SimpleShader();
 
+		// Carga de modelo GLB
+		GlbModel model;
+
+		try {
+			model = GlbModel.load("src/main/resources/models/17_deadpool_mua.glb");
+		} catch (IOException e) {
+			throw new RuntimeException("No fue posible cargar el modelo GLB usando Assimp: " + GLB_MODEL_PATH, e);
+		}
+
+		model.crearShader();
+
         //Manejo del mouse para seleccionar objetos
 		//------------------------------------------------------------------------------------
 		MousePicker picker = new MousePicker(camera, masterRenderer.getProjectionMatrix(), terrain);
@@ -433,6 +449,26 @@ public class MainGameLoop {
 			//GL11.glPolygonOffset(1.0f, 1.0f);
 
 			drawLara(shader, lara, masterRenderer, camera, modelMatrix);
+
+			// INICIO: dibujado del modelo GLB
+			model.update(0.0f); // TODO: Añadir cálculo delta
+
+			Matrix4f vp = new Matrix4f(masterRenderer.getProjectionMatrix()).mul(Maths.createViewMatrix(camera));
+
+			Matrix4f glbModelMatrix = new Matrix4f()
+					.identity()
+					.scale(model.getRecommendedScale())
+					.rotateY((float) Math.toRadians(modelAngle))
+					.translate(model.getCenterOffset());
+
+			GL20.glUseProgram(model.shaderProgram);
+
+			GL20.glUniform3f(model.locationLightDirection, -0.35f, -1.0f, -0.25f);
+			GL20.glUniform1i(model.locationTextureSampler, 0);
+
+			model.render(vp, glbModelMatrix);
+
+			// FIN: dibujado del modelo GLB
 
 			//GL11.glDisable(GL11.GL_POLYGON_OFFSET_FILL);
 
