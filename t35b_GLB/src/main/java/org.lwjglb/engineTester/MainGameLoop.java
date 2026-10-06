@@ -74,6 +74,27 @@ public class MainGameLoop {
 		GL11.glFrontFace(GL11.GL_CCW); //
 	}
 
+	static void drawGLB(GlbModel model, Matrix4f vp, Matrix4f glbModelMatrix, MasterRenderer masterRenderer, Camera camera) {
+		model.update(0.0f); // TODO: Añadir cálculo delta
+
+		vp = new Matrix4f(masterRenderer.getProjectionMatrix()).mul(Maths.createViewMatrix(camera));
+
+		glbModelMatrix = new Matrix4f()
+				.identity()
+				.scale(model.getRecommendedScale())
+				.rotateY((float) Math.toRadians(modelAngle))
+				.translate(model.getCenterOffset());
+
+		GL20.glUseProgram(model.shaderProgram);
+
+		GL20.glUniform3f(model.locationLightDirection, -0.35f, -1.0f, -0.25f);
+		GL20.glUniform1i(model.locationTextureSampler, 0);
+
+		model.render(vp, glbModelMatrix);
+
+		GL20.glUseProgram(0);
+	}
+
 	/**
 	 * Creates a display and then continuously updates the display until the user tries to close it. 
 	 * @param args
@@ -461,14 +482,7 @@ public class MainGameLoop {
 					.rotateY((float) Math.toRadians(modelAngle))
 					.translate(model.getCenterOffset());
 
-			GL20.glUseProgram(model.shaderProgram);
-
-			GL20.glUniform3f(model.locationLightDirection, -0.35f, -1.0f, -0.25f);
-			GL20.glUniform1i(model.locationTextureSampler, 0);
-
-			model.render(vp, glbModelMatrix);
-
-			GL20.glUseProgram(0);
+			drawGLB(model, vp, glbModelMatrix, masterRenderer, camera);
 
 			// FIN: dibujado del modelo GLB
 
@@ -479,27 +493,7 @@ public class MainGameLoop {
 			fbos.unbindCurrentFrameBuffer();
 			masterRenderer.renderScene(entities, normalMapEntities, terrains, lights, camera, new Vector4f(0, -1, 0, 100000));
 
-			// INICIO: dibujado del modelo GLB
-			model.update(0.0f); // TODO: Añadir cálculo delta
-
-			vp = new Matrix4f(masterRenderer.getProjectionMatrix()).mul(Maths.createViewMatrix(camera));
-
-			glbModelMatrix = new Matrix4f()
-					.identity()
-					.scale(model.getRecommendedScale())
-					.rotateY((float) Math.toRadians(modelAngle))
-					.translate(model.getCenterOffset());
-
-			GL20.glUseProgram(model.shaderProgram);
-
-			GL20.glUniform3f(model.locationLightDirection, -0.35f, -1.0f, -0.25f);
-			GL20.glUniform1i(model.locationTextureSampler, 0);
-
-			model.render(vp, glbModelMatrix);
-
-			GL20.glUseProgram(0);
-
-			// FIN: dibujado del modelo GLB
+			drawGLB(model, vp, glbModelMatrix, masterRenderer, camera);
 
 			drawLara(shader, lara, masterRenderer, camera, modelMatrix);
 
