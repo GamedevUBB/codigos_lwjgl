@@ -468,6 +468,8 @@ public class MainGameLoop {
 
 			model.render(vp, glbModelMatrix);
 
+			GL20.glUseProgram(0);
+
 			// FIN: dibujado del modelo GLB
 
 			//GL11.glDisable(GL11.GL_POLYGON_OFFSET_FILL);
@@ -476,6 +478,28 @@ public class MainGameLoop {
 			GL11.glDisable(GL30.GL_CLIP_DISTANCE0);
 			fbos.unbindCurrentFrameBuffer();
 			masterRenderer.renderScene(entities, normalMapEntities, terrains, lights, camera, new Vector4f(0, -1, 0, 100000));
+
+			// INICIO: dibujado del modelo GLB
+			model.update(0.0f); // TODO: Añadir cálculo delta
+
+			vp = new Matrix4f(masterRenderer.getProjectionMatrix()).mul(Maths.createViewMatrix(camera));
+
+			glbModelMatrix = new Matrix4f()
+					.identity()
+					.scale(model.getRecommendedScale())
+					.rotateY((float) Math.toRadians(modelAngle))
+					.translate(model.getCenterOffset());
+
+			GL20.glUseProgram(model.shaderProgram);
+
+			GL20.glUniform3f(model.locationLightDirection, -0.35f, -1.0f, -0.25f);
+			GL20.glUniform1i(model.locationTextureSampler, 0);
+
+			model.render(vp, glbModelMatrix);
+
+			GL20.glUseProgram(0);
+
+			// FIN: dibujado del modelo GLB
 
 			drawLara(shader, lara, masterRenderer, camera, modelMatrix);
 
