@@ -18,6 +18,8 @@ import org.lwjglb.fontRendering.TextMaster;
 import org.lwjglb.glb.GlbModel;
 import org.lwjglb.guis.GuiRenderer;
 import org.lwjglb.guis.GuiTexture;
+import org.lwjglb.guis.interactables.Button;
+import org.lwjglb.guis.interactables.ButtonCallback;
 import org.lwjglb.md3.MD3Model;
 import org.lwjglb.md3.SimpleShader;
 import org.lwjglb.models.TexturedModel;
@@ -57,6 +59,13 @@ import org.lwjgl.opengl.GL20;
  *
  */
 public class MainGameLoop {
+	// Callback para botón
+    static class BotonSocuwan implements ButtonCallback {
+		public void OnClick() {
+			System.out.println("He sido presionado!!");
+		}
+	}
+
 	private static float modelAngle = 0.0f;
 	private static SimpleShader shader;
 	private static final String GLB_MODEL_PATH = "src/main/resources/models/17_deadpool_mua.glb";
@@ -305,11 +314,22 @@ public class MainGameLoop {
 
 		//List<GuiTexture> guis = new ArrayList<GuiTexture>();
 		GuiTexture gui1 = new GuiTexture(loader.loadTexture("socuwan"), new Vector2f(0.7f, 0.5f), new Vector2f(0.125f, 0.125f));
-		guis.add(gui1);
+		// guis.add(gui1);
 
 		GuiTexture gui3 = new GuiTexture(loader.loadTexture("health"), new Vector2f(0.8f, 0.9f), new Vector2f(0.2f, 0.2f));
 		guis.add(gui3);
 		GuiRenderer guiRenderer = new GuiRenderer(loader);
+
+		// INICIO: Creación de botones
+
+		BotonSocuwan cbBotonSocuwan = new BotonSocuwan();
+
+		Vector2f topLeft = new Vector2f(0.78f, 0.78f);
+		Vector2f bottomRight = new Vector2f(0.91f, 0.71f);
+
+		Button botonSocuwan = new Button(guiRenderer, gui1, topLeft, bottomRight, cbBotonSocuwan);
+
+		// FIN: Creación de botones
 
 		//Creacion de Entidades sobre el terreno
 		//------------------------------------------------------------------------------------
@@ -501,6 +521,7 @@ public class MainGameLoop {
 			waterRenderer.render(waters, camera, light);
 			ParticleMaster.renderParticles(camera);
 			guiRenderer.render(guis);
+			botonSocuwan.Update();
 			TextMaster.render();
 			DisplayManager.updateDisplay();
 		}
