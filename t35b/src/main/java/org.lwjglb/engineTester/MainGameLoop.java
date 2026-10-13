@@ -330,8 +330,10 @@ public class MainGameLoop {
 		//----------------------------------------------------------------------------------
 		//Modelo MD3
 		MD3Model lara;
+		String nombre = "lara"; // Para cada modelo MD3, colocar aquí el nombre de la carpeta
+
 		lara = new MD3Model();
-		lara.loadModel(new Config().getPath() + "md3/lara", "lara");
+		lara.loadModel(new Config().getPath() + "md3/" + nombre, nombre);
 		lara.setTorsoAnimation("TORSO_STAND2");
 		lara.setLegsAnimation("LEGS_IDLE");
 		float rotaModel = 0f;
